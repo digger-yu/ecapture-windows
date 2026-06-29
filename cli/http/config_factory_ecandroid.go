@@ -44,3 +44,8 @@ func createMysqlConfig(c *gin.Context) (domain.Configuration, error) {
 func createPostgresConfig(c *gin.Context) (domain.Configuration, error) {
 	return nil, fmt.Errorf("postgres probe not supported on Android")
 }
+
+// createBashConfig - Bash not supported on Android
+func createBashConfig(c *gin.Context) (domain.Configuration, error) {
+	return nil, fmt.Errorf("bash probe not supported on Android")
+}

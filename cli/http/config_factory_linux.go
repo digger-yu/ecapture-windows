@@ -1,5 +1,5 @@
-//go:build !ecap_android
-// +build !ecap_android
+//go:build !ecap_android && !windows
+// +build !ecap_android,!windows
 
 // Copyright 2022 CFC4N <cfc4n.cs@gmail.com>. All Rights Reserved.
 //
@@ -21,6 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/gojue/ecapture/internal/domain"
+	bashProbe "github.com/gojue/ecapture/internal/probe/bash"
 	gnutlsProbe "github.com/gojue/ecapture/internal/probe/gnutls"
 	mysqlProbe "github.com/gojue/ecapture/internal/probe/mysql"
 	nsprProbe "github.com/gojue/ecapture/internal/probe/nspr"
@@ -57,6 +58,15 @@ func createMysqlConfig(c *gin.Context) (domain.Configuration, error) {
 // createPostgresConfig creates and decodes Postgres probe configuration from HTTP request
 func createPostgresConfig(c *gin.Context) (domain.Configuration, error) {
 	conf := postgresProbe.NewConfig()
+	if err := c.ShouldBindJSON(conf); err != nil {
+		return nil, err
+	}
+	return conf, nil
+}
+
+// createBashConfig creates and decodes Bash probe configuration from HTTP request
+func createBashConfig(c *gin.Context) (domain.Configuration, error) {
+	conf := bashProbe.NewConfig()
 	if err := c.ShouldBindJSON(conf); err != nil {
 		return nil, err
 	}

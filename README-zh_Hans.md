@@ -12,9 +12,9 @@
 ### eCapture(旁观者): 基于eBPF技术实现SSL/TLS加密的明文捕获，无需CA证书。
 
 > [!TIP]
-> 支持Linux/Android系统，x86_64架构内核4.18及以上，aarch64架构内核5.5及以上；内核版本要求按CPU架构区分，适用于Linux和Android（GKI）；
-> 需要ROOT权限或特定的 [Linux capabilities](docs/minimum-privileges.md)；
-> 不支持Windows、macOS系统；
+> 支持 **Linux/Android** 系统，x86_64 架构内核 4.18 及以上，aarch64 架构内核 5.5 及以上；内核版本要求按 CPU 架构区分，适用于 Linux 和 Android（GKI）；
+> 支持 **Windows**（10 Build 17763+ / Server 2019+）amd64 和 arm64 架构，需要管理员权限；
+> 不支持 macOS 系统；
 
 ----
 <!-- MarkdownTOC autolink="true" -->
@@ -22,7 +22,8 @@
 - [介绍](#介绍)
 - [快速上手](#快速上手)
   - [下载](#下载)
-    - [ELF可执行文件](#elf可执行文件)
+    - [Linux / Android 可执行文件](#linux--android-可执行文件)
+    - [Windows 可执行文件](#windows-可执行文件)
     - [Docker容器镜像](#docker容器镜像)
   - [小试身手](#小试身手)
   - [模块介绍](#模块介绍)
@@ -48,12 +49,19 @@ eCapture的汉字名字为**旁观者**，即「**当局者迷，旁观者清**�
 
 ## 下载
 
-### ELF可执行文件
+### Linux / Android 可执行文件
 
 > [!IMPORTANT]
-> 支持 Linux/Android的x86_64/aarch64 CPU架构。
+> 支持 Linux/Android 的 x86_64/aarch64 CPU 架构。
 
 下载 [release](https://github.com/gojue/ecapture/releases) 的二进制包，可直接使用。
+
+### Windows 可执行文件
+
+> [!IMPORTANT]
+> 支持 Windows amd64/arm64 架构，需要管理员权限。
+
+下载 [release](https://github.com/gojue/ecapture/releases) 的 Windows zip 包，解压后通过 `ecapture.exe --help` 使用。
 
 ### Docker容器镜像
 
@@ -241,6 +249,27 @@ https://github.com/user-attachments/assets/c8b7a84d-58eb-4fdb-9843-f775c97bdbfb
 ## 自行编译
 你可以定制自己想要的功能，比如设定`uprobe`
 的偏移地址，用来支持被静态编译的Openssl类库。编译方法可以参考 [编译指南](docs/compilation-zh_Hans.md) 的介绍。
+
+## Windows 平台编译
+
+在 Linux 主机上交叉编译到 Windows 是 Windows 版 eCapture 的推荐构建方式，因为 eBPF 程序无法在 Windows 上编译。eCapture for Windows 底层使用 ETW（Event Tracing for Windows）代替 eBPF。
+
+```bash
+# Windows 构建（设置 NPCAP_SDK 后自动启用 pcap）：
+make windows                  # Windows amd64
+make windows-arm64            # Windows arm64
+
+# 启用 pcap：安装 Npcap SDK + MinGW-w64，然后设置环境变量
+export NPCAP_SDK=/opt/npcap-sdk
+make windows                  # 自动启用 pcap
+```
+
+| NPCAP_SDK 设置？ | CGO | pcap | 用途 |
+|----------------|-----|------|------|
+| 未设置 | 关闭 | 不支持 | 默认。任何装好 Go 的 Linux 主机都能编译。 |
+| 已设置 | 开启 | 支持 | 以 pcapng 格式抓取网络包。目标 Windows 主机需要安装 Npcap 运行时。 |
+
+如果用未启用 `pcap` tag 编译出来的二进制去启动 pcap 模式，eCapture 会以明确、可操作的错误信息拒绝启动——不会再出现难以排查的 CGO 链接错误。
 
 ## 动态修改配置
 当eCapture运行后，你可以通过HTTP接口动态修改配置，参考[HTTP API 文档](docs/remote-config-update-api-zh_Hans.md)。

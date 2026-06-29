@@ -18,7 +18,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/gojue/ecapture/internal/domain"
-	bashProbe "github.com/gojue/ecapture/internal/probe/bash"
 	gotlsProbe "github.com/gojue/ecapture/internal/probe/gotls"
 	opensslProbe "github.com/gojue/ecapture/internal/probe/openssl"
 )
@@ -35,15 +34,6 @@ func createOpensslConfig(c *gin.Context) (domain.Configuration, error) {
 // createGotlsConfig creates and decodes GoTLS probe configuration from HTTP request
 func createGotlsConfig(c *gin.Context) (domain.Configuration, error) {
 	conf := gotlsProbe.NewConfig()
-	if err := c.ShouldBindJSON(conf); err != nil {
-		return nil, err
-	}
-	return conf, nil
-}
-
-// createBashConfig creates and decodes Bash probe configuration from HTTP request
-func createBashConfig(c *gin.Context) (domain.Configuration, error) {
-	conf := bashProbe.NewConfig()
 	if err := c.ShouldBindJSON(conf); err != nil {
 		return nil, err
 	}

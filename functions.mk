@@ -74,3 +74,66 @@ define release_tar
 	$(CMD_CP) $(OUTPUT_DIR)/ecapture $(TAR_DIR)/ecapture
 	$(CMD_TAR) -czf $(OUT_ARCHIVE) $(TAR_DIR)
 endef
+
+# Build schannel_hook.dll for Windows (MinGW target via clang).
+define build_schannel_hook_dll
+	$(CMD_MKDIR) -p bin
+	@if ! $(CMD_CLANG) --target=$(MINGW_CLANG_TARGET) -v >/dev/null 2>&1; then \
+		echo "ERROR: $(CMD_CLANG) cannot target $(MINGW_CLANG_TARGET); cannot build bin/schannel_hook.dll"; \
+		echo "  Install MinGW headers/libs, e.g.:"; \
+		echo "    sudo apt-get install -y mingw-w64-x86-64-dev"; \
+		echo "  (Windows arm64 sysroot: sudo apt-get install -y gcc-mingw-w64-aarch64-linux-gnu)"; \
+		exit 1; \
+	fi
+	@echo "Building bin/schannel_hook.dll ($(MINGW_CLANG_TARGET))"
+	$(CMD_CLANG) --target=$(MINGW_CLANG_TARGET) -shared -O2 -DSECURITY_WIN32 \
+		-o bin/schannel_hook.dll $(SCHANNEL_HOOK_SRC) -lws2_32 -lsecur32
+	@ls -lh bin/schannel_hook.dll
+endef
+
+# Cross-compile ecapture.exe for Windows (ETW; optional pcap on amd64 when NPCAP_SDK is set).
+define gobuild_windows
+	$(CMD_MKDIR) -p bin
+	@if [ "$(WINDOWS_GOARCH)" = "arm64" ]; then \
+		if [ -n "$(NPCAP_SDK)" ]; then \
+			echo "NOTE: pcap mode is not yet supported on Windows ARM64 (gopacket incompatibility)"; \
+		fi; \
+		echo "Building eCapture for Windows arm64 (ETW-only)"; \
+		CGO_ENABLED=0 GOOS=windows GOARCH=arm64 $(CMD_GO) build \
+			-tags 'windows' \
+			-ldflags "-s -w -X 'github.com/gojue/ecapture/cli/cmd.GitVersion=windows_arm64:$(VERSION_NUM)' -X 'github.com/gojue/ecapture/cli/cmd.ByteCodeFiles=none'" \
+			-o bin/ecapture.exe main.go; \
+	elif [ -n "$(NPCAP_SDK)" ]; then \
+		echo "Building eCapture for Windows amd64 (ETW + pcap)"; \
+		CGO_ENABLED=1 \
+		CGO_CFLAGS="-I$(NPCAP_SDK)/Include" \
+		CGO_LDFLAGS="-L$(NPCAP_SDK)/Lib/x64 -lwpcap -lPacket" \
+		CC='$(MINGW_CC)' \
+		GOOS=windows GOARCH=amd64 $(CMD_GO) build \
+			-tags 'windows,pcap' \
+			-ldflags "-s -w -X 'github.com/gojue/ecapture/cli/cmd.GitVersion=windows_amd64:$(VERSION_NUM)' -X 'github.com/gojue/ecapture/cli/cmd.ByteCodeFiles=none'" \
+			-o bin/ecapture.exe main.go; \
+	else \
+		echo "Building eCapture for Windows amd64 (ETW-only, set NPCAP_SDK to enable pcap)"; \
+		CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(CMD_GO) build \
+			-tags 'windows' \
+			-ldflags "-s -w -X 'github.com/gojue/ecapture/cli/cmd.GitVersion=windows_amd64:$(VERSION_NUM)' -X 'github.com/gojue/ecapture/cli/cmd.ByteCodeFiles=none'" \
+			-o bin/ecapture.exe main.go; \
+	fi
+endef
+
+# build and zip for Windows (no eBPF, CGO_ENABLED=0)
+define release_zip
+	$(call allow-override,TAR_DIR,ecapture-$(DEB_VERSION)-$(1)-$(2))
+	$(call allow-override,OUT_ZIP,$(OUTPUT_DIR)/$(TAR_DIR).zip)
+	$(CMD_MAKE) clean
+	$(CMD_MAKE) windows CROSS_ARCH=$(2)
+	$(CMD_MKDIR) -p $(TAR_DIR)
+	$(CMD_CP) LICENSE $(TAR_DIR)/LICENSE
+	$(CMD_CP) README.md $(TAR_DIR)/README.md
+	$(CMD_CP) README-zh_Hans.md $(TAR_DIR)/README-zh_Hans.md
+	$(CMD_CP) $(OUTPUT_DIR)/ecapture.exe $(TAR_DIR)/ecapture.exe
+	@if [ -f bin/schannel_hook.dll ]; then $(CMD_CP) bin/schannel_hook.dll $(TAR_DIR)/schannel_hook.dll; fi
+	$(CMD_RM) -f $(OUT_ZIP)
+	(cd $(TAR_DIR) && $(CMD_ZIP) -r ../$(OUT_ZIP) .)
+endef

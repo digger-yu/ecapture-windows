@@ -57,6 +57,9 @@ env:
 	@echo "GOARCH                   $(GOARCH)"
 	@echo "LINUX_ARCH               $(LINUX_ARCH)"
 	@echo "LIBPCAP_ARCH             $(LIBPCAP_ARCH)"
+	@echo "WINDOWS_GOARCH           $(WINDOWS_GOARCH)"
+	@echo "MINGW_CLANG_TARGET       $(MINGW_CLANG_TARGET)"
+	@echo "MINGW_CC                 $(MINGW_CC)"
 	@echo "AUTOGENCMD               $(AUTOGENCMD)"
 	@echo "PACKAGE_VERSION          $(PACKAGE_VERSION)"
 	@echo "OUT_DEB_FILE             $(OUT_DEB_FILE)"
@@ -93,6 +96,13 @@ help:
 	@echo ""
 	@echo "# flags"
 	@echo "    $$ ANDROID=1 make ...				# build eCapture for Android"
+	@echo ""
+	@echo "# windows"
+	@echo "    $$ make windows					# cross-compile for Windows (arch from HOST_ARCH)"
+	@echo "    $$ CROSS_ARCH=arm64 make windows		# cross-compile for Windows arm64 on amd64 host"
+	@echo "    # outputs: bin/ecapture.exe + bin/schannel_hook.dll (SSPI plaintext)"
+	@echo "    # pcap mode is enabled automatically when NPCAP_SDK is set"
+	@echo "    #   export NPCAP_SDK=/opt/npcap-sdk"
 
 
 .PHONY: prepare
@@ -111,6 +121,8 @@ clean:
 	$(CMD_RM) -f bytecode/*.o
 	$(CMD_RM) -f assets/ebpf_probe.go
 	$(CMD_RM) -f bin/ecapture
+	$(CMD_RM) -f bin/ecapture.exe
+	$(CMD_RM) -f bin/schannel_hook.dll
 	$(CMD_RM) -f .check*
 	if test -e "./lib/libpcap/Makefile"; then $(MAKE) -C ./lib/libpcap clean; fi
 
@@ -201,6 +213,24 @@ build_noncore: \
 	$(call allow-override,VERSION_FLAG,$(HOST_ARCH))
 	$(call allow-override,BYTECODE_FILES,noncore)
 	$(call gobuild, $(ANDROID))
+
+# Build Windows binary (cross-compile from Linux).
+# Windows uses ETW instead of eBPF, so no eBPF bytecode is needed.
+# Target arch: HOST_ARCH by default, or CROSS_ARCH=arm64|amd64 (same as Linux cross-build).
+#
+# pcap mode is enabled automatically when NPCAP_SDK is set (amd64 only):
+#   - Download Npcap SDK from https://npcap.com/
+#   - Set NPCAP_SDK to the SDK root (e.g. /opt/npcap-sdk)
+#   - MinGW headers/libs: apt-get install mingw-w64-x86-64-dev
+# If NPCAP_SDK is not set, builds without pcap (ETW-only).
+# Always builds bin/schannel_hook.dll alongside bin/ecapture.exe.
+.PHONY: windows bin/schannel_hook.dll
+windows: .checkver_$(CMD_GO)
+	$(call gobuild_windows)
+	$(call build_schannel_hook_dll)
+
+bin/schannel_hook.dll:
+	$(call build_schannel_hook_dll)
 
 # Format the code
 .PHONY: format

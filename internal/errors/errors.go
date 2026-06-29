@@ -63,6 +63,14 @@ const (
 	ErrCodeResourceCleanup
 )
 
+// Feature/capability errors (6xx). Used when a feature is intentionally
+// present in the code surface but not yet implemented for the current
+// platform or configuration (for example, a Windows inline hook that
+// patches only the eCapture process itself, not third-party processes).
+const (
+	ErrCodeUnsupported ErrorCode = 600 + iota
+)
+
 // Error represents a structured error in eCapture.
 type Error struct {
 	Code    ErrorCode

@@ -10,9 +10,9 @@
 ### eCapture(旁观者): capture SSL/TLS text content without a CA certificate using eBPF.
 
 > [!IMPORTANT]  
-> Supports Linux/Android on x86_64 (kernel 4.18+) and aarch64 (kernel **5.5+**). Kernel version requirements apply per CPU architecture for both Linux and Android.
-> Need ROOT permission or specific [Linux capabilities](docs/minimum-privileges.md).
-> Does not support Windows and macOS system.
+> Supports **Linux/Android** on x86_64 (kernel 4.18+) and aarch64 (kernel **5.5+**). Kernel version requirements apply per CPU architecture for both Linux and Android.
+> Supports **Windows** (10 Build 17763+ / Server 2019+) on amd64 and arm64. Requires Administrator privileges.
+> Does not support macOS.
 
 ----
 
@@ -20,7 +20,8 @@
 - [Introduction](#introduction)
 - [Getting started](#getting-started)
   - [Download](#download)
-    - [ELF binary file](#elf-binary-file)
+    - [Linux / Android](#linux--android)
+    - [Windows](#windows)
     - [Docker image](#docker-image)
   - [Capture openssl text content.](#capture-openssl-text-content)
   - [Modules](#modules)
@@ -47,13 +48,21 @@
 
 ## Download
 
-### ELF binary file
+### Linux / Android
 
 > [!TIP]
-> support Linux/Android x86_64/aarch64.
+> Linux/Android x86_64/aarch64.
 
-Download ELF zip file [release](https://github.com/gojue/ecapture/releases) , unzip and use by
+Download ELF zip file from [release](https://github.com/gojue/ecapture/releases), unzip and use by
 command `sudo ecapture --help`.
+
+### Windows
+
+> [!TIP]
+> Windows amd64/arm64. Requires Administrator privileges.
+
+Download Windows zip file from [release](https://github.com/gojue/ecapture/releases), unzip and use by
+command `ecapture.exe --help`.
 
 ### Docker image
 
@@ -228,6 +237,27 @@ See [CONTRIBUTING](./CONTRIBUTING.md) for details on submitting patches and the 
 ## Custom Compilation
 
 You can customize the features you want, such as setting the offset address for `uprobe` to support statically compiled OpenSSL libraries. Refer to the [compilation guide](./docs/compilation.md) for compilation instructions.
+
+## Building for Windows
+
+Cross-compiling for Windows from a Linux host is the recommended way to build eCapture on Windows because eBPF programs cannot be compiled on Windows. eCapture for Windows uses ETW (`Microsoft-Windows-Schannel-Events`) for Schannel handshake **metadata**; optional plaintext needs `contrib/schannel_hook` (see [docs/windows-roadmap.md](./docs/windows-roadmap.md)).
+
+```bash
+# Windows builds (pcap enabled automatically when NPCAP_SDK is set):
+make windows                  # Windows amd64 → bin/ecapture.exe + bin/schannel_hook.dll
+make windows-arm64            # Windows arm64 → same layout
+
+# To enable pcap, install Npcap SDK + MinGW-w64, then:
+export NPCAP_SDK=/opt/npcap-sdk
+make windows                  # pcap enabled automatically
+```
+
+| NPCAP_SDK set? | CGO | pcap | Use case |
+|----------------|-----|------|----------|
+| No | disabled | no | Default. Works on any Linux host with only Go installed. |
+| Yes | enabled | yes | Captures network packets in pcapng format. Requires Npcap runtime on the target Windows host. |
+
+If the binary was built without the `pcap` tag and the user requests pcap mode, eCapture refuses to start with a clear, actionable error message — no opaque CGO link errors.
 
 ## Configurations Remote Update
 

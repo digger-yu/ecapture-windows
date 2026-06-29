@@ -30,6 +30,12 @@ const (
 
 // PacketEvent represents a network packet captured by TC probes.
 // This implements the PacketEvent interface from handlers package.
+//
+// On Linux the SrcIP/DstIP/SrcPort/DstPort fields are populated from the
+// eBPF TC classifier (see kern/openssl_*.c for the per-version struct
+// layout). On Windows, when built with `-tags 'windows,pcap'`, they are
+// populated from the parsed L3/L4 headers of the gopacket.Packet received
+// from Npcap (see event_packet_windows.go).
 type PacketEvent struct {
 	Timestamp      uint64
 	Pid            uint32
@@ -38,6 +44,13 @@ type PacketEvent struct {
 	PacketLen      uint32
 	InterfaceIndex uint32
 	PacketData     []byte
+	// Connection tuple information, parsed from L3/L4 headers when
+	// available. Linux TC captures that don't parse these layers leave
+	// them as zero values.
+	SrcIP   string
+	DstIP   string
+	SrcPort uint16
+	DstPort uint16
 }
 
 // DecodeFromBytes decodes a packet event from raw bytes.
@@ -98,8 +111,15 @@ func (e *PacketEvent) StringHex() string {
 func (e *PacketEvent) Clone() domain.Event {
 	clone := &PacketEvent{
 		Timestamp:      e.Timestamp,
+		Pid:            e.Pid,
+		Comm:           e.Comm,
+		Cmdline:        e.Cmdline,
 		PacketLen:      e.PacketLen,
 		InterfaceIndex: e.InterfaceIndex,
+		SrcIP:          e.SrcIP,
+		DstIP:          e.DstIP,
+		SrcPort:        e.SrcPort,
+		DstPort:        e.DstPort,
 	}
 	if e.PacketData != nil {
 		clone.PacketData = make([]byte, len(e.PacketData))
@@ -135,22 +155,25 @@ func (e *PacketEvent) GetInterfaceIndex() uint32 {
 	return e.InterfaceIndex
 }
 
-// Connection tuple information - these would need to be parsed from packet data
-// For now, return empty values as TC captures raw packets
+// Connection tuple information. On Linux the values come from the eBPF
+// decoder, but the current eBPF data path does not include them so the
+// methods return the zero value. On Windows (with the `pcap` build tag)
+// these fields are populated from the parsed gopacket.Packet headers in
+// event_packet_windows.go.
 func (e *PacketEvent) GetSrcIP() string {
-	return ""
+	return e.SrcIP
 }
 
 func (e *PacketEvent) GetDstIP() string {
-	return ""
+	return e.DstIP
 }
 
 func (e *PacketEvent) GetSrcPort() uint16 {
-	return 0
+	return e.SrcPort
 }
 
 func (e *PacketEvent) GetDstPort() uint16 {
-	return 0
+	return e.DstPort
 }
 
 // Decode implements domain.EventDecoder interface for packet events.

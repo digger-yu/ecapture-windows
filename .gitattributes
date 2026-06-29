@@ -1,0 +1,75 @@
+# eCapture 仓库的行尾符规范
+# 目的：避免 Windows + core.autocrlf=true 导致脚本在 Linux 上因 CRLF 报错
+# （典型症状：bash 报 "here-document delimited by end-of-file (wanted `EOF')"）
+#
+# 规则：
+#   - Linux 执行的脚本/源码：强制 LF
+#   - Windows 原生脚本：保持 CRLF
+#   - 二进制文件：不转换
+#   - 其他文本文件：使用 LF（更通用）
+
+# ============================================================================
+# 强制 LF（Linux 上执行的脚本和源码）
+# ============================================================================
+
+# Shell 脚本
+*.sh           text eol=lf
+*.bash         text eol=lf
+
+# C/C++ 源码（eBPF 探针）
+*.c            text eol=lf
+*.h            text eol=lf
+
+# Go 源码
+*.go           text eol=lf
+go.mod         text eol=lf
+go.sum         text eol=lf
+
+# Makefile
+Makefile       text eol=lf
+*.mk           text eol=lf
+builder/Makefile.* text eol=lf
+
+# 配置文件
+*.yml          text eol=lf
+*.yaml         text eol=lf
+*.json         text eol=lf
+*.proto        text eol=lf
+
+# 其他脚本
+*.lua          text eol=lf
+*.py           text eol=lf
+*.js           text eol=lf
+
+# 构建相关
+*.spec         text eol=lf
+
+# 文档
+*.md           text eol=lf
+*.txt          text eol=lf
+
+# Git 配置
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+.gitmodules    text eol=lf
+
+# ============================================================================
+# 保持 CRLF（Windows 原生脚本）
+# ============================================================================
+*.ps1          text eol=crlf
+*.bat          text eol=crlf
+*.cmd          text eol=crlf
+
+# ============================================================================
+# 二进制文件（不转换行尾符）
+# ============================================================================
+*.png          binary
+*.jpg          binary
+*.jpeg         binary
+*.gif          binary
+*.svg          binary
+*.bin          binary
+*.o            binary
+*.gz           binary
+*.tar          binary
+*.zip          binary

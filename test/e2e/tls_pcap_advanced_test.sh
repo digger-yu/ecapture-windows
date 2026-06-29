@@ -151,8 +151,25 @@ test_pcap_with_host_filter() {
     local mode_log="$OUTPUT_DIR/pcap_host_filter.log"
     local pcap_file="$OUTPUT_DIR/host_filter.pcapng"
     
-    log_info "Starting ecapture with filter: host api.github.com"
-    "$ECAPTURE_BINARY" tls -m pcap -w "$pcap_file" -i "$DEFAULT_IFACE" "host api.github.com" > "$mode_log" 2>&1 &
+    # Resolve hostname to IPv4 address first to avoid DNS inconsistency
+    # between libpcap (BPF compile time) and curl (request time).
+    # Without this, they may resolve to different CDN IPs → empty pcap.
+    # Using ahostsv4 / A record to force IPv4 (avoids IPv6 colon issues in
+    # curl --resolve HOST:PORT:ADDR format).
+    local target_host="api.github.com"
+    local target_ip
+    target_ip=$(getent ahostsv4 "$target_host" 2>/dev/null | awk '/STREAM/{print $1; exit}')
+    if [ -z "$target_ip" ]; then
+        target_ip=$(dig +short A "$target_host" 2>/dev/null | head -1)
+    fi
+    if [ -z "$target_ip" ]; then
+        log_error "Cannot resolve $target_host, skipping test"
+        TEST_RESULTS+=("host_filter:SKIP")
+        return 0
+    fi
+    
+    log_info "Starting ecapture with filter: host $target_ip ($target_host)"
+    "$ECAPTURE_BINARY" tls -m pcap -w "$pcap_file" -i "$DEFAULT_IFACE" "host $target_ip" > "$mode_log" 2>&1 &
     local pid=$!
     sleep 3
     
@@ -162,8 +179,8 @@ test_pcap_with_host_filter() {
         return 1
     fi
     
-    log_info "Making HTTPS request to api.github.com"
-    curl -v "https://api.github.com" >/dev/null 2>&1 || true
+    log_info "Making HTTPS request to $target_host (resolved: $target_ip)"
+    curl -v --resolve "$target_host:443:$target_ip" "https://$target_host" >/dev/null 2>&1 || true
     sleep 2
     
     kill -INT "$pid" 2>/dev/null || true
