@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   actions: read
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -33,8 +34,6 @@ jobs:
           sudo apt-get install --yes gcc-mingw-w64-x86-64 mingw-w64-x86-64-dev
 
       - name: Build Windows ${{ matrix.arch }}
-        env:
-          CROSS_ARCH: ${{ matrix.arch == 'arm64' && 'arm64' || '' }}
         run: |
           if [ "${{ matrix.arch }}" = "arm64" ]; then
             CROSS_ARCH=arm64 make windows
@@ -46,11 +45,9 @@ jobs:
           mv bin/schannel_hook.dll dist/ 2>/dev/null || true
 
       - name: Create zip
-        env:
-          VERSION: v0.0.0-pr-${{ github.event.number || 'dev' }}-debug
         run: |
           cd dist
-          zip -r ../ecapture-${{ env.VERSION }}-windows-${{ matrix.arch }}.zip .
+          zip -r ../ecapture-v0.0.0-pr-${{ github.event.number || 'dev' }}-debug-windows-${{ matrix.arch }}.zip .
           cd ..
 
       - name: Upload Debug Artifacts
@@ -60,7 +57,46 @@ jobs:
           path: ecapture-v0.0.0-pr-${{ github.event.number || 'dev' }}-debug-windows-${{ matrix.arch }}.zip
           retention-days: 7
 
-      - name: List Built Artifacts
-        run: |
-          echo "Built debug artifacts:"
-          ls -lh *.zip
+  comment-pr:
+    runs-on: ubuntu-24.04
+    name: Comment PR with download links
+    needs: build-debug-artifacts
+    if: always()
+    steps:
+      - name: Get artifact URLs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runId = context.runId;
+            const prNumber = context.payload.pull_request.number;
+            const artifactResult = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+            });
+
+            const artifacts = artifactResult.data.artifacts || [];
+            const links = artifacts
+              .map(a => `  - [${a.name}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}/artifacts/${a.id})`)
+              .join('\n');
+
+            const amd64Failed = '${{ needs.build-debug-artifacts.result }}' !== 'success';
+
+            const body = [
+              '🔧 **Debug Build**',
+              '',
+              amd64Failed ? '⚠️ Build failed for one or more targets.' : '✅ Build succeeded.',
+              '',
+              '📦 **Download Links** _(GitHub login required, 7-day retention)_:',
+              links || '_(no artifacts produced)_',
+              '',
+              '---',
+              '*Windows amd64/arm64 debug binaries*'
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              issue_number: prNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
