@@ -44,7 +44,8 @@ LIBPCAP_ARCH ?=
 GOARCH ?=
 DEBUG_PRINT ?=
 TARGET_ARCH = x86_64
-# Use clang as default compiler for both libpcap and cgo.
+# Use gcc as default compiler for both libpcap and cgo (Linux targets).
+# Windows cross-builds use MinGW gcc (see MINGW_CC above).
 CGO_ENABLED = 1
 TARGET_LIBPCAP = ./lib/libpcap.a
 TARGET_TAG ?= linux
@@ -144,25 +145,26 @@ endif
 ifdef CROSS_ARCH
  ifeq ($(CROSS_ARCH),arm64)
 	WINDOWS_GOARCH = arm64
-	MINGW_CLANG_TARGET = aarch64-w64-windows-gnu
+	MINGW_TARGET = aarch64-w64-windows-gnu
  else ifeq ($(CROSS_ARCH),amd64)
 	WINDOWS_GOARCH = amd64
-	MINGW_CLANG_TARGET = x86_64-w64-windows-gnu
+	MINGW_TARGET = x86_64-w64-windows-gnu
  else
 	$(error unsupported CROSS_ARCH=$(CROSS_ARCH) for Windows; use arm64 or amd64)
  endif
 else
  ifeq ($(HOST_ARCH),aarch64)
 	WINDOWS_GOARCH = arm64
-	MINGW_CLANG_TARGET = aarch64-w64-windows-gnu
+	MINGW_TARGET = aarch64-w64-windows-gnu
  else
 	WINDOWS_GOARCH = amd64
-	MINGW_CLANG_TARGET = x86_64-w64-windows-gnu
+	MINGW_TARGET = x86_64-w64-windows-gnu
  endif
 endif
 
-# MinGW cross CC: reuse CMD_CLANG (--target) + mingw-w64 dev headers/libs; no gcc-mingw-w64 compiler.
-MINGW_CC = $(CMD_CLANG) --target=$(MINGW_CLANG_TARGET)
+# MinGW cross CC: uses x86_64-w64-mingw32-gcc for Windows amd64 builds.
+# ARM64 DLL builds are skipped (no inline hook needed — see schannel_hook.c:29).
+MINGW_CC = x86_64-w64-mingw32-gcc
 SCHANNEL_HOOK_SRC = contrib/schannel_hook/schannel_hook.c
 
 # Determine whether the command sudo exists

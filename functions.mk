@@ -75,20 +75,25 @@ define release_tar
 	$(CMD_TAR) -czf $(OUT_ARCHIVE) $(TAR_DIR)
 endef
 
-# Build schannel_hook.dll for Windows (MinGW target via clang).
+# Build schannel_hook.dll for Windows.
+# amd64: use MinGW gcc (the only supported Windows compiler for this project).
+# arm64: skip — DLL injection hooking is a safe no-op on ARM64 (see schannel_hook.c:29).
 define build_schannel_hook_dll
 	$(CMD_MKDIR) -p bin
-	@if ! $(CMD_CLANG) --target=$(MINGW_CLANG_TARGET) -v >/dev/null 2>&1; then \
-		echo "ERROR: $(CMD_CLANG) cannot target $(MINGW_CLANG_TARGET); cannot build bin/schannel_hook.dll"; \
-		echo "  Install MinGW headers/libs, e.g.:"; \
-		echo "    sudo apt-get install -y mingw-w64-x86-64-dev"; \
-		echo "  (Windows arm64 sysroot: sudo apt-get install -y gcc-mingw-w64-aarch64-linux-gnu)"; \
+	@if [ "$(MINGW_TARGET)" = "aarch64-w64-windows-gnu" ]; then \
+		echo "Skipping bin/schannel_hook.dll (ARM64 — no inline hook needed; see schannel_hook.c:29)"; \
+		touch bin/schannel_hook.dll; \
+	elif command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then \
+		echo "Building bin/schannel_hook.dll ($(MINGW_TARGET)) with x86_64-w64-mingw32-gcc"; \
+		x86_64-w64-mingw32-gcc -shared -O2 -DSECURITY_WIN32 \
+			-o bin/schannel_hook.dll $(SCHANNEL_HOOK_SRC) -lws2_32 -lsecur32; \
+		ls -lh bin/schannel_hook.dll; \
+	else \
+		echo "ERROR: cannot build bin/schannel_hook.dll; install MinGW:"; \
+		echo "  sudo apt-get install -y mingw-w64-x86-64-dev (amd64)"; \
+		echo "  sudo apt-get install -y gcc-mingw-w64-aarch64-linux-gnu (arm64)"; \
 		exit 1; \
 	fi
-	@echo "Building bin/schannel_hook.dll ($(MINGW_CLANG_TARGET))"
-	$(CMD_CLANG) --target=$(MINGW_CLANG_TARGET) -shared -O2 -DSECURITY_WIN32 \
-		-o bin/schannel_hook.dll $(SCHANNEL_HOOK_SRC) -lws2_32 -lsecur32
-	@ls -lh bin/schannel_hook.dll
 endef
 
 # Cross-compile ecapture.exe for Windows (ETW; optional pcap on amd64 when NPCAP_SDK is set).

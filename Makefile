@@ -58,7 +58,7 @@ env:
 	@echo "LINUX_ARCH               $(LINUX_ARCH)"
 	@echo "LIBPCAP_ARCH             $(LIBPCAP_ARCH)"
 	@echo "WINDOWS_GOARCH           $(WINDOWS_GOARCH)"
-	@echo "MINGW_CLANG_TARGET       $(MINGW_CLANG_TARGET)"
+	@echo "MINGW_TARGET             $(MINGW_TARGET)"
 	@echo "MINGW_CC                 $(MINGW_CC)"
 	@echo "AUTOGENCMD               $(AUTOGENCMD)"
 	@echo "PACKAGE_VERSION          $(PACKAGE_VERSION)"
