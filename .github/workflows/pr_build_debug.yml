@@ -7,7 +7,6 @@ on:
 permissions:
   contents: read
   actions: read
-  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -57,18 +56,17 @@ jobs:
           path: ecapture-v0.0.0-pr-${{ github.event.number || 'dev' }}-debug-windows-${{ matrix.arch }}.zip
           retention-days: 7
 
-  comment-pr:
+  summary:
     runs-on: ubuntu-24.04
-    name: Comment PR with download links
+    name: Generate download links
     needs: build-debug-artifacts
     if: always()
     steps:
-      - name: Get artifact URLs
+      - name: Generate artifact download links
         uses: actions/github-script@v7
         with:
           script: |
             const runId = context.runId;
-            const prNumber = context.payload.pull_request.number;
             const artifactResult = await github.rest.actions.listWorkflowRunArtifacts({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -77,15 +75,13 @@ jobs:
 
             const artifacts = artifactResult.data.artifacts || [];
             const links = artifacts
-              .map(a => `  - [${a.name}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}/artifacts/${a.id})`)
+              .map(a => `- [${a.name}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}/artifacts/${a.id})`)
               .join('\n');
 
-            const amd64Failed = '${{ needs.build-debug-artifacts.result }}' !== 'success';
-
-            const body = [
-              '🔧 **Debug Build**',
-              '',
-              amd64Failed ? '⚠️ Build failed for one or more targets.' : '✅ Build succeeded.',
+            const buildResult = '${{ needs.build-debug-artifacts.result }}';
+            const emoji = buildResult === 'success' ? '✅' : '⚠️';
+            const summary = [
+              `## ${emoji} Debug Build — PR #${{ github.event.number || 'dev' }}`,
               '',
               '📦 **Download Links** _(GitHub login required, 7-day retention)_:',
               links || '_(no artifacts produced)_',
@@ -94,9 +90,6 @@ jobs:
               '*Windows amd64/arm64 debug binaries*'
             ].join('\n');
 
-            await github.rest.issues.createComment({
-              issue_number: prNumber,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
-            });
+            const fs = require('fs');
+            const summaryFile = process.env.GITHUB_STEP_SUMMARY;
+            fs.appendFileSync(summaryFile, summary);
