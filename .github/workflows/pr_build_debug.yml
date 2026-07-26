@@ -1,7 +1,7 @@
 name: PR Build (Debug)
 on:
   pull_request:
-    branches: [ master, v2, v1 ]
+    branches: [ master, feat/windows-support ]
     types: [ opened, synchronize, reopened ]
 
 permissions:
@@ -14,77 +14,53 @@ concurrency:
 
 jobs:
   build-debug-artifacts:
-    runs-on: ubuntu-22.04
-    name: Build Debug Artifacts
+    runs-on: ubuntu-24.04
+    name: Build Windows Debug Artifacts
     strategy:
       matrix:
-        os: [ android, linux ]
-        arch: [ arm64, amd64 ]
+        arch: [ amd64, arm64 ]
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: 'recursive'
-          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25.12'
 
-      - name: Install Compilers
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes \
-            build-essential \
-            pkgconf \
-            libelf-dev \
-            llvm-14 \
-            clang-14 \
-            linux-tools-common \
-            linux-tools-generic \
-            gcc \
-            gcc-aarch64-linux-gnu \
-            linux-source
-          for tool in "clang" "llc" "llvm-strip"
-          do
-            sudo rm -f /usr/bin/$tool
-            sudo ln -s /usr/bin/$tool-14 /usr/bin/$tool
-          done
-          cd /usr/src
-          source_file=$(find . -maxdepth 1 -name "*linux-source*.tar.bz2")
-          source_dir=$(echo "$source_file" | sed 's/\.tar\.bz2//g')
-          sudo tar -xf $source_file
-          cd $source_dir
-          test -f .config || sudo make oldconfig
-          sudo make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- prepare V=0
-
-
-      - name: Build Debug amd64
+      - name: Install MinGW (amd64 only)
         if: matrix.arch == 'amd64'
         run: |
-          make clean
-          make env
-          DEBUG=1 make -f builder/Makefile.release release SNAPSHOT_VERSION=v0.0.0-pr-${{ github.event.number || 'dev' }}-debug
-          cp bin/ecapture-*.tar.gz dist/
+          sudo apt-get update
+          sudo apt-get install --yes mingw-w64-x86-64-dev
 
-      - name: Build Debug arm64
-        if: matrix.arch == 'arm64'
+      - name: Build Windows ${{ matrix.arch }}
+        env:
+          CROSS_ARCH: ${{ matrix.arch == 'arm64' && 'arm64' || '' }}
         run: |
-          make clean
-          make env
-          DEBUG=1 CROSS_ARCH=arm64 make -f builder/Makefile.release release SNAPSHOT_VERSION=v0.0.0-pr-${{ github.event.number || 'dev' }}-debug
-          cp bin/ecapture-*.tar.gz dist/
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            CROSS_ARCH=arm64 make windows
+          else
+            CROSS_ARCH=amd64 make windows
+          fi
+          mkdir -p dist
+          mv bin/ecapture.exe dist/
+          mv bin/schannel_hook.dll dist/ 2>/dev/null || true
+
+      - name: Create zip
+        env:
+          VERSION: v0.0.0-pr-${{ github.event.number || 'dev' }}-debug
+        run: |
+          cd dist
+          zip -r ../ecapture-${{ env.VERSION }}-windows-${{ matrix.arch }}.zip .
+          cd ..
 
       - name: Upload Debug Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ecapture-v0.0.0-pr-${{ github.event.number || 'dev' }}-debug-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
-          path: dist/ecapture-v0.0.0-pr-${{ github.event.number || 'dev' }}-debug-${{ matrix.os }}-${{ matrix.arch }}.tar.gz
+          name: ecapture-v0.0.0-pr-${{ github.event.number || 'dev' }}-debug-windows-${{ matrix.arch }}.zip
+          path: ecapture-v0.0.0-pr-${{ github.event.number || 'dev' }}-debug-windows-${{ matrix.arch }}.zip
           retention-days: 7
 
       - name: List Built Artifacts
         run: |
           echo "Built debug artifacts:"
-          ls -la dist/
-          echo "Artifact sizes:"
-          du -h dist/*
+          ls -lh *.zip

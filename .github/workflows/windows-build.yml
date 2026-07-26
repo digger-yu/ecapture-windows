@@ -1,0 +1,94 @@
+name: Windows Build CI
+on:
+  push:
+    branches: [ master, feat/windows-support ]
+  pull_request:
+    branches: [ master, feat/windows-support ]
+
+jobs:
+  build-windows-amd64:
+    runs-on: ubuntu-24.04
+    name: build Windows amd64
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.12'
+
+      - name: Install MinGW for schannel_hook.dll
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes mingw-w64-x86-64-dev
+
+      - name: Build Windows amd64
+        run: |
+          CROSS_ARCH=amd64 make windows
+
+      - name: Verify binary
+        run: |
+          file bin/ecapture.exe
+          file bin/schannel_hook.dll
+          ls -lh bin/
+
+      - name: go vet (amd64)
+        run: |
+          GOOS=windows GOARCH=amd64 go vet -tags 'windows' -unsafeptr=false ./...
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecapture-windows-amd64
+          path: |
+            bin/ecapture.exe
+            bin/schannel_hook.dll
+          retention-days: 7
+
+  build-windows-arm64:
+    runs-on: ubuntu-24.04-arm
+    name: build Windows arm64
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.12'
+
+      - name: Build Windows arm64
+        run: |
+          CROSS_ARCH=arm64 make windows
+
+      - name: Verify binary
+        run: |
+          file bin/ecapture.exe
+          ls -lh bin/
+
+      - name: go vet (arm64)
+        run: |
+          GOOS=windows GOARCH=arm64 go vet -tags 'windows' -unsafeptr=false ./...
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecapture-windows-arm64
+          path: bin/ecapture.exe
+          retention-days: 7
+
+  unit-tests:
+    runs-on: ubuntu-24.04
+    name: unit tests
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.12'
+
+      - name: Run tests
+        run: go test -v ./internal/... ./pkg/...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.4
+          skip-cache: true

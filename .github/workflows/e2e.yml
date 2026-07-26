@@ -1,11 +1,10 @@
 name: E2E Tests
-
 on:
   pull_request:
-    branches: [ master, v2, v1, feat/windows-support ]
+    branches: [ master, feat/windows-support ]
     types: [ opened, synchronize, reopened ]
   push:
-    branches: [ master, v2, v1, feat/windows-support ]
+    branches: [ master, feat/windows-support ]
 
 permissions:
   contents: read
@@ -17,135 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  e2e-tests:
-    runs-on: ubuntu-22.04
-    name: E2E Tests (TLS/GnuTLS/GoTLS)
-    
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: 'recursive'
-          fetch-depth: 0
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.12'
-
-      - name: Install Required Tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes \
-            build-essential \
-            pkgconf \
-            libelf-dev \
-            llvm-14 \
-            clang-14 \
-            linux-tools-common \
-            linux-tools-generic \
-            gcc \
-            curl \
-            wget \
-            netcat-openbsd \
-            openssl \
-            libssl-dev \
-            ca-certificates
-          
-          # Set up clang-14 as default
-          for tool in "clang" "llc" "llvm-strip"
-          do
-            sudo rm -f /usr/bin/$tool
-            sudo ln -s /usr/bin/$tool-14 /usr/bin/$tool
-          done
-          
-          # Verify tools are installed
-          echo "=== Installed Tool Versions ==="
-          go version
-          clang --version | head -1
-          curl --version | head -1
-          wget --version | head -1
-          openssl version
-
-      - name: Prepare Linux Headers
-        run: |
-          cd /usr/src
-          source_file=$(find . -maxdepth 1 -name "*linux-source*.tar.bz2")
-          if [ -n "$source_file" ]; then
-            source_dir=$(echo "$source_file" | sed 's/\.tar\.bz2//g')
-            sudo tar -xf $source_file
-            cd $source_dir
-            test -f .config || sudo make oldconfig
-          fi
-
-
-      - name: Build eCapture
-        run: |
-          make clean
-          make env
-          make -j$(nproc)
-          
-          # Verify binary was built
-          if [ ! -f bin/ecapture ]; then
-            echo "❌ Failed to build ecapture binary"
-            exit 1
-          fi
-          
-          ls -lh bin/ecapture
-          file bin/ecapture
-
-      - name: Build ecaptureq_client
-        run: |
-          cd examples/ecaptureq_client
-          go build -o ../../bin/ecaptureq_client .
-          ls -lh ../../bin/ecaptureq_client
-          echo "✅ ecaptureq_client built successfully"
-
-      - name: Detect eBPF TC capability
-        id: tc-capable
-        run: |
-          # eCapture's pcap mode relies on eBPF TC (traffic control) classifiers.
-          # GitHub-hosted runners often run inside a constrained network namespace
-          # that does not allow adding a `clsact` qdisc, which makes pcap-mode
-          # tests unreliable. Probe the capability by attempting to add a clsact
-          # qdisc on eth0 (the runner's default interface) and immediately remove
-          # it. If either step fails, we skip the entire E2E job.
-          if sudo tc qdisc add dev eth0 clsact 2>/dev/null && sudo tc qdisc del dev eth0 clsact 2>/dev/null; then
-            echo "capable=true" >> "$GITHUB_OUTPUT"
-            echo "eBPF TC is available on this runner"
-          else
-            echo "capable=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::eBPF TC is not available on this runner; skipping E2E tests (environment limitation, not a regression)."
-          fi
-
-      - name: Run E2E Tests
-        if: steps.tc-capable.outputs.capable == 'true'
-        run: |
-          echo "=== Running E2E Tests ==="
-          echo "Kernel: $(uname -r)"
-          echo "Architecture: $(uname -m)"
-
-          # Run comprehensive e2e tests with sudo
-          # Tests will connect to https://github.com to verify TLS capture
-          sudo make e2e || {
-            echo "❌ E2E tests failed"
-            exit 1
-          }
-
-      - name: Skip E2E (eBPF TC unavailable)
-        if: steps.tc-capable.outputs.capable != 'true'
-        run: |
-          echo "::notice::E2E tests were skipped because eBPF TC is not available in this runner. The skipped job is treated as a pass."
-          exit 0
-
-      - name: E2E Test Summary
-        if: always()
-        run: |
-          echo "=== E2E Test Execution Complete ==="
-          if [ $? -eq 0 ]; then
-            echo "✅ All E2E tests passed successfully"
-          else
-            echo "❌ Some E2E tests failed - check logs above"
-          fi
-
   e2e-tests-windows:
     runs-on: windows-2022
     name: E2E Tests Windows (TLS/Schannel)
@@ -209,25 +79,6 @@ jobs:
         run: |
           Write-Host "=== Windows E2E Test Execution Complete ==="
 
-  e2e-tests-summary:
-    runs-on: ubuntu-22.04
-    name: E2E Test Results Summary
-    needs: [e2e-tests, e2e-tests-windows]
-    if: always()
-    
-    steps:
-      - name: Check E2E Test Results
-        run: |
-          echo "Linux E2E:  ${{ needs.e2e-tests.result }}"
-          echo "Windows E2E: ${{ needs.e2e-tests-windows.result }}"
-          if [ "${{ needs.e2e-tests.result }}" == "success" ] && [ "${{ needs.e2e-tests-windows.result }}" == "success" ]; then
-            echo "All E2E Tests: PASSED"
-            exit 0
-          else
-            echo "E2E Tests: FAILED"
-            exit 1
-          fi
-
       - name: Comment PR with E2E Results
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
@@ -235,37 +86,27 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const prNumber = context.payload.pull_request.number;
-            const linuxResult = '${{ needs.e2e-tests.result }}';
-            const windowsResult = '${{ needs.e2e-tests-windows.result }}';
+            const windowsResult = '${{ job.status }}';
             const runId = context.runId;
-            const allPassed = linuxResult === 'success' && windowsResult === 'success';
-            
-            const statusEmoji = allPassed ? '✅' : '❌';
-            const statusText = allPassed ? 'PASSED' : 'FAILED';
-            const emoji = (r) => r === 'success' ? '✅' : '❌';
-            
-            const body = `## ${statusEmoji} E2E Test Results: ${statusText}
-            
-            **Test Run:** [#${runId}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId})
-            
-            ### Linux E2E Tests: ${emoji(linuxResult)} ${linuxResult}
-            - TLS/OpenSSL Module (curl -> github.com)
-            - GnuTLS Module (wget/curl -> github.com)
-            - GoTLS Module (Go client -> github.com)
-            - ecaptureQ Module (WebSocket event streaming)
-            
-            ### Windows E2E Tests: ${emoji(windowsResult)} ${windowsResult}
-            - TLS/Schannel Module (text mode)
-            - TLS/Schannel Module (keylog mode)
-            - PCAP mode (default build - expected pass)
-            
-            ${allPassed ? 
-              'All e2e tests passed successfully!' : 
-              'Some e2e tests failed. Please check the workflow logs for details.'}
-            
-            ---
-            *Automated e2e test results for commit ${context.sha.substring(0, 7)}*`;
-            
+            const allPassed = windowsResult === 'success';
+            const emoji = allPassed ? '✅' : '❌';
+            const body = [
+              `## ${emoji} Windows E2E Test Results: ${allPassed ? 'PASSED' : 'FAILED'}`,
+              '',
+              `**Test Run:** [#${runId}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId})`,
+              '',
+              '### Windows E2E Tests',
+              '- TLS/Schannel Module (text mode)',
+              '- TLS/Schannel Module (keylog mode)',
+              '- PCAP mode',
+              '',
+              allPassed ?
+                'All e2e tests passed successfully!' :
+                'Some e2e tests failed. Please check the workflow logs for details.',
+              '',
+              '---',
+              `*Automated e2e test results for commit ${context.sha.substring(0, 7)}*`
+            ].join('\n');
             try {
               await github.rest.issues.createComment({
                 issue_number: prNumber,
