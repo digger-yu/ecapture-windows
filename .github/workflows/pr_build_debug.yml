@@ -30,7 +30,7 @@ jobs:
         if: matrix.arch == 'amd64'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes mingw-w64-x86-64-dev
+          sudo apt-get install --yes gcc-mingw-w64-x86-64 mingw-w64-x86-64-dev
 
       - name: Build Windows ${{ matrix.arch }}
         env:
